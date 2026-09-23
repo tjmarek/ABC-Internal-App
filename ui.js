@@ -68,6 +68,8 @@
     return Math.round(ms / (1000 * 60 * 60 * 24));
   }
 
+  function fmtMoneyPlain(n) { return "$" + n.toFixed(2); }
+
   // =========================================================================
   // STATUS BADGE MAPS
   // =========================================================================
@@ -149,7 +151,7 @@
     setTimeout(function () {
       el.style.opacity = "0";
       el.style.transition = "opacity 200ms ease";
-      setTimeout(function () { region.removeChild(el); }, 220);
+      setTimeout(function () { if (el.parentNode) region.removeChild(el); }, 220);
     }, 3800);
   }
 
@@ -346,10 +348,8 @@
     var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     var yearStart = new Date(now.getFullYear(), 0, 1);
 
-    // MET-001 New opportunities (current month, by creation date)
     var newOppsThisMonth = opps.filter(function (o) { return new Date(o.createdDate) >= monthStart; }).length;
 
-    // MET-002 Open pipeline value (latest active estimate revision per open opportunity)
     var openStatuses = ["New", "Active", "Estimate in Progress", "Estimate Under Review", "Estimate Sent"];
     var openOpps = opps.filter(function (o) { return openStatuses.indexOf(o.status) !== -1; });
     var pipelineValue = 0;
@@ -358,7 +358,6 @@
       if (current) pipelineValue += (current.sellingPrice || 0);
     });
 
-    // MET-003/004/005/006/007 Estimates sent
     function sentEstimatesInRange(start, end) {
       return estimates.filter(function (e) {
         var sh = e.sentHistory && e.sentHistory.length ? e.sentHistory[e.sentHistory.length - 1] : null;
@@ -374,28 +373,23 @@
 
     function sumSelling(list) { return list.reduce(function (s, e) { return s + (e.sellingPrice || 0); }, 0); }
 
-    // MET-008 Awaiting approval to send
     var awaitingApproval = estimates.filter(function (e) { return e.status === "Ready for Review"; }).length;
 
-    // MET-009 Win rate (YTD by close date)
     var closedYTD = opps.filter(function (o) { return o.closeDate && new Date(o.closeDate) >= yearStart && (o.status === "Won" || o.status === "Lost"); });
     var wonYTD = closedYTD.filter(function (o) { return o.status === "Won"; }).length;
     var lostYTD = closedYTD.filter(function (o) { return o.status === "Lost"; }).length;
     var winRate = (wonYTD + lostYTD) > 0 ? wonYTD / (wonYTD + lostYTD) : null;
 
-    // MET-010 Win/loss reasons
     var lossReasonCounts = {};
     opps.filter(function (o) { return o.status === "Lost"; }).forEach(function (o) {
       var r = o.lossReason || "Not specified";
       lossReasonCounts[r] = (lossReasonCounts[r] || 0) + 1;
     });
 
-    // MET-011 Revenue YTD (payments actually received)
     var allPayments = [];
     projects.forEach(function (p) { allPayments = allPayments.concat(D.getPaymentsForProject(p.id)); });
     var revenueYTD = allPayments.filter(function (p) { return new Date(p.paymentDate) >= yearStart; }).reduce(function (s, p) { return s + p.amount; }, 0);
 
-    // MET-012 Profit YTD (revenue received YTD minus approved actual expenses YTD)
     var allApprovedCostsYTD = 0;
     projects.forEach(function (p) {
       var exp = D.getExpensesForProject(p.id).filter(function (e) { return e.approvalStatus === "Approved" && new Date(e.expenseDate) >= yearStart; });
@@ -408,7 +402,6 @@
     var profitYTD = revenueYTD - allApprovedCostsYTD;
     var profitYTDPct = revenueYTD > 0 ? profitYTD / revenueYTD : null;
 
-    // MET-013/014 Average sale values, last 12 months
     var twelveMoAgo = new Date(now.getTime() - 365 * 86400000);
     var acceptedLast12 = estimates.filter(function (e) { return e.status === "Accepted" && e.acceptedDate && new Date(e.acceptedDate) >= twelveMoAgo; });
     var materialOnly = acceptedLast12.filter(function (e) { return e.estimateType === "Material-Only Sale"; });
@@ -435,10 +428,10 @@
       return '<div class="metric-card"><span class="metric-label">' + esc(m.label) + '</span><span class="metric-value">' + m.value + '</span><span class="metric-sub">' + esc(m.sub) + '</span></div>';
     }).join('');
 
+    var maxCount = Math.max.apply(null, Object.values(lossReasonCounts).concat([1]));
     var lossReasonRows = Object.keys(lossReasonCounts).map(function (r) {
       var count = lossReasonCounts[r];
-      var max = Math.max.apply(null, Object.values(lossReasonCounts).concat([1]));
-      var pct = Math.round((count / max) * 100);
+      var pct = Math.round((count / maxCount) * 100);
       return '<div class="bar-row"><span>' + esc(r) + '</span><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div><span>' + count + '</span></div>';
     }).join('') || '<p class="muted-text">No lost opportunities recorded yet.</p>';
 
@@ -492,7 +485,7 @@
       return true;
     }).sort(function (a, b) { return new Date(b.createdDate) - new Date(a.createdDate); });
 
-    var statusOptions = ["", ].concat(D.OPPORTUNITY_STATUSES);
+    var statusOptions = [""].concat(D.OPPORTUNITY_STATUSES);
     var filterBar = '' +
       '<div class="flex-between mb-4">' +
         '<div class="flex-row">' +
@@ -571,6 +564,46 @@
           '<button type="button" class="btn btn-secondary" data-close-modal>Cancel</button>' +
           '<button type="submit" class="btn btn-primary">Save Changes</button>' +
         '</div>' +
+      '</form>';
+  }
+
+  function renderMarkLostForm(oppId) {
+    return '' +
+      '<div class="modal-header"><h2>Mark Opportunity Lost</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="mark-lost-form" data-opp-id="' + oppId + '">' +
+        '<div class="modal-body">' +
+          fieldSelect("lossReason", "Loss Reason", "", D.getControlledLists().lossReasons, { required: true }) +
+          fieldTextarea("lossNotes", "Additional Notes (Optional)", "") +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-danger">Mark Lost</button></div>' +
+      '</form>';
+  }
+
+  function renderMarkHoldForm(oppId) {
+    return '' +
+      '<div class="modal-header"><h2>Place Opportunity On Hold</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="mark-hold-form" data-opp-id="' + oppId + '">' +
+        '<div class="modal-body">' +
+          fieldTextarea("holdReason", "Reason", "", { required: true }) +
+          fieldText("nextReviewDate", "Next Review Date", "", { type: "date" }) +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Place On Hold</button></div>' +
+      '</form>';
+  }
+
+  function renderNewEstimateForm(oppId) {
+    return '' +
+      '<div class="modal-header"><h2>Create New Estimate</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="new-estimate-form" data-opp-id="' + oppId + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldSelect("estimateType", "Estimate Type", "Installation/Project", ["Installation/Project", "Material-Only Sale"], { required: true }) +
+            fieldSelect("customerType", "Residential or Commercial", "Residential", ["Residential", "Commercial"], { required: true }) +
+            fieldText("proposalExpirationDate", "Proposal Expiration Date", "", { type: "date" }) +
+            fieldTextarea("estimateNotes", "Estimate Notes (Internal)", "", { fullWidth: true }) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Create Estimate</button></div>' +
       '</form>';
   }
 
@@ -739,9 +772,6 @@
 
   // =========================================================================
   // VIEW: ESTIMATE WORKSPACE (the largest module)
-  // Sub-tabs: Overview | Proposal Line Items | Takeoff Segments |
-  //           Internal Costs | Financial Analysis | Proposal Preview |
-  //           Review & Approval | Revisions & Snapshots | Follow-Up
   // =========================================================================
 
   function renderEstimateWorkspace(estId, activeTab) {
@@ -793,7 +823,7 @@
       '<div class="flex-between mb-4">' +
         badge(est.status) +
         '<div class="flex-row">' +
-          (isLocked && est.status !== "Superseded" && est.status !== "Accepted" && est.status !== "Declined" && est.status !== "Expired" && est.status !== "Archived" ?
+          (isLocked && ["Superseded", "Accepted", "Declined", "Expired", "Archived"].indexOf(est.status) === -1 ?
             '<button type="button" class="btn btn-secondary" id="create-revision-btn" data-est-id="' + est.id + '">Create Revision</button>' : '') +
           '<button type="button" class="btn btn-secondary" id="edit-estimate-header-btn" data-est-id="' + est.id + '">Edit Estimate Info</button>' +
         '</div>' +
@@ -1064,8 +1094,6 @@
       '</form>';
   }
 
-  function fmtMoneyPlain(n) { return "$" + n.toFixed(2); }
-
   // ---------- Financial Analysis tab ----------
 
   function renderFinancialsTab(est) {
@@ -1235,6 +1263,32 @@
       '</form>';
   }
 
+  function renderDeclineForm(estId) {
+    return '' +
+      '<div class="modal-header"><h2>Mark Estimate Declined</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="decline-form" data-est-id="' + estId + '">' +
+        '<div class="modal-body">' +
+          fieldSelect("declineReason", "Reason", "", D.getControlledLists().lossReasons, { required: true }) +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-danger">Mark Declined</button></div>' +
+      '</form>';
+  }
+
+  function renderMarkWonForm(estId) {
+    var est = D.getEstimateById(estId);
+    return '' +
+      '<div class="modal-header"><h2>Mark Won &amp; Create Project</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="mark-won-form" data-est-id="' + estId + '">' +
+        '<div class="modal-body">' +
+          '<div class="callout callout-info mb-3">This preserves an immutable Accepted snapshot and creates a linked project with this estimate as the Original Project Budget.</div>' +
+          fieldText("acceptedContractValue", "Accepted Contract Value", est.sellingPrice, { type: "number", step: "0.01", required: true }) +
+          fieldTextarea("acceptanceEvidence", "Acceptance Evidence / Notes", "", { required: true, hint: "Signature, email confirmation, or verbal acceptance notes." }) +
+          fieldText("expectedStartDate", "Expected Start Date (Optional)", "", { type: "date" }) +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Confirm Won</button></div>' +
+      '</form>';
+  }
+
   // =========================================================================
   // VIEW: PRICE CATALOG
   // =========================================================================
@@ -1349,6 +1403,22 @@
     );
   }
 
+  function renderNewProjectForm() {
+    var wonEstimates = D.getEstimates().filter(function (e) { return e.status === "Accepted"; });
+    return '' +
+      '<div class="modal-header"><h2>New Project (Exception Path)</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="new-project-form">' +
+        '<div class="modal-body">' +
+          '<div class="callout callout-warning mb-3">The normal path is Won Estimate to Project. Use this only when a project did not originate from an accepted estimate, or to manually create a missing record.</div>' +
+          fieldText("customerName", "Customer Name", "", { required: true, fullWidth: true }) +
+          fieldText("jobAddress", "Job Address", "", { required: true }) +
+          fieldText("originalContractValue", "Initial Contract Value", 0, { type: "number", step: "0.01", required: true }) +
+          fieldTextarea("notes", "Notes", "") +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Create Project</button></div>' +
+      '</form>';
+  }
+
   // =========================================================================
   // VIEW: PROJECT DETAIL (financial summary + sub-tabs)
   // =========================================================================
@@ -1449,67 +1519,4 @@
     if (e.approvalStatus === "Approved" && e.paymentStatus !== "Paid") {
       actions.push('<button type="button" class="link-btn" data-pay-expense="' + e.id + '">Mark Paid</button>');
     }
-    return actions.join(' &middot; ') || '&mdash;';
-  }
-
-  function renderExpenseForm(project, expense) {
-    var e = expense || { id: null, expenseDate: new Date().toISOString().substring(0, 10), costCategoryId: "CAT-001", vendor: "", description: "", amountBeforeTax: 0, tax: 0 };
-    return '' +
-      '<div class="modal-header"><h2>' + (expense ? "Edit" : "Add") + ' Expense</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
-      '<form id="expense-form" data-proj-id="' + project.id + '" data-expense-id="' + (e.id || '') + '">' +
-        '<div class="modal-body">' +
-          '<div class="form-grid">' +
-            fieldText("expenseDate", "Expense Date", e.expenseDate ? e.expenseDate.substring(0, 10) : "", { type: "date", required: true }) +
-            fieldSelect("costCategoryId", "Cost Category", e.costCategoryId, D.getCostCategories().map(function (c) { return { value: c.id, label: c.name }; }), { required: true }) +
-            fieldText("vendor", "Vendor", e.vendor, { required: true }) +
-            fieldText("description", "Description", e.description, { required: true, fullWidth: true }) +
-            fieldText("amountBeforeTax", "Amount Before Tax", e.amountBeforeTax, { type: "number", step: "0.01", required: true }) +
-            fieldText("tax", "Tax", e.tax, { type: "number", step: "0.01" }) +
-          '</div>' +
-        '</div>' +
-        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save Expense</button></div>' +
-      '</form>';
-  }
-
-  function renderSubcontractorsTab(project, subs) {
-    var rows = subs.map(function (s) {
-      return '<tr><td>' + esc(s.subcontractorName) + '</td><td>' + esc(s.scopeDescription) + '</td><td>' + fmtMoney(s.commitmentAmount) + '</td>' +
-        '<td>' + fmtMoney(s.invoiceAmount) + '</td><td>' + badge(s.approvalStatus) + '</td>' +
-        '<td>' + (s.paid ? '<span class="badge badge-green">Paid</span>' : '<span class="badge badge-gray">Unpaid</span>') + '</td>' +
-        '<td>' + renderSubActions(s) + '</td></tr>';
-    }).join('');
-    return card('' +
-      '<div class="card-header"><h3>Subcontractor Costs</h3><button type="button" class="btn btn-secondary btn-sm" id="add-sub-btn" data-proj-id="' + project.id + '">+ Add Subcontractor Cost</button></div>' +
-      (subs.length ? tableWrap('<thead><tr><th>Subcontractor</th><th>Scope</th><th>Commitment</th><th>Invoiced</th><th>Approval</th><th>Paid</th><th></th></tr></thead><tbody>' + rows + '</tbody>')
-        : emptyState("&#128119;", "No subcontractor costs recorded", "Add a subcontractor commitment and invoice.")),
-    '');
-  }
-
-  function renderSubActions(s) {
-    var actions = [];
-    if (s.approvalStatus === "Draft" || s.approvalStatus === "Submitted") actions.push('<button type="button" class="link-btn" data-approve-sub="' + s.id + '">Approve</button>');
-    if (s.approvalStatus === "Approved" && !s.paid) actions.push('<button type="button" class="link-btn" data-pay-sub="' + s.id + '">Mark Paid</button>');
-    return actions.join(' &middot; ') || '&mdash;';
-  }
-
-  function renderSubForm(project, sub) {
-    var s = sub || { id: null, subcontractorName: "", scopeDescription: "", costCategoryId: "CAT-003", commitmentAmount: 0, invoiceNumber: "", invoiceAmount: 0 };
-    return '' +
-      '<div class="modal-header"><h2>Add Subcontractor Cost</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
-      '<form id="sub-form" data-proj-id="' + project.id + '">' +
-        '<div class="modal-body">' +
-          '<div class="form-grid">' +
-            fieldText("subcontractorName", "Subcontractor Name", s.subcontractorName, { required: true, fullWidth: true }) +
-            fieldText("scopeDescription", "Scope Description", s.scopeDescription, { fullWidth: true }) +
-            fieldText("commitmentAmount", "Commitment Amount", s.commitmentAmount, { type: "number", step: "0.01" }) +
-            fieldText("invoiceNumber", "Invoice Number", s.invoiceNumber) +
-            fieldText("invoiceAmount", "Invoice Amount", s.invoiceAmount, { type: "number", step: "0.01", required: true }) +
-          '</div>' +
-        '</div>' +
-        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>' +
-      '</form>';
-  }
-
-  function renderLaborTab(project, labor) {
-    var rows = labor.map(function (l) {
-      return '<tr><td>' +
+    return actions.join
