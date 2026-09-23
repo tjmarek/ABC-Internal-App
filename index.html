@@ -1,1 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Austin Block Company | Internal Operations App</title>
+<meta name="description" content="Austin Block Company internal operations prototype: opportunities, estimates, projects, and financials." />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
 
+<!-- ===================== SKIP LINK (ACCESSIBILITY) ===================== -->
+<a class="skip-link" href="#main-content">Skip to main content</a>
+
+<!-- ===================== APP SHELL ===================== -->
+<div id="app-shell" class="app-shell">
+
+  <!-- ===================== MOBILE TOP BAR ===================== -->
+  <header class="mobile-topbar" id="mobile-topbar">
+    <button type="button" class="icon-btn" id="mobile-nav-toggle" aria-label="Open navigation menu" aria-expanded="false" aria-controls="sidebar-nav">
+      <span class="hamburger" aria-hidden="true"></span>
+    </button>
+    <div class="mobile-topbar-title">
+      <span class="brand-mark" aria-hidden="true">ABC</span>
+      <span>Austin Block Ops</span>
+    </div>
+    <button type="button" class="icon-btn" id="mobile-search-toggle" aria-label="Open search">
+      <span aria-hidden="true">&#128269;</span>
+    </button>
+  </header>
+
+  <!-- ===================== SIDEBAR NAVIGATION ===================== -->
+  <nav class="sidebar" id="sidebar-nav" aria-label="Primary">
+    <div class="sidebar-header">
+      <span class="brand-mark" aria-hidden="true">ABC</span>
+      <div class="sidebar-title">
+        <strong>Austin Block Company</strong>
+        <span>Internal Operations</span>
+      </div>
+      <button type="button" class="icon-btn sidebar-close" id="sidebar-close" aria-label="Close navigation menu">&times;</button>
+    </div>
+
+    <div class="sidebar-search">
+      <label for="global-search" class="sr-only">Search all records</label>
+      <input type="search" id="global-search" placeholder="Search opportunities, estimates, projects..." autocomplete="off" />
+    </div>
+
+    <ul class="nav-list" id="nav-list" role="list">
+      <li><a href="#/dashboard" data-route="dashboard" class="nav-link"><span class="nav-icon" aria-hidden="true">&#127968;</span><span>Home Dashboard</span></a></li>
+      <li><a href="#/opportunities" data-route="opportunities" class="nav-link"><span class="nav-icon" aria-hidden="true">&#128188;</span><span>Opportunities</span></a></li>
+      <li><a href="#/estimates" data-route="estimates" class="nav-link"><span class="nav-icon" aria-hidden="true">&#128203;</span><span>Estimates</span></a></li>
+      <li><a href="#/price-catalog" data-route="price-catalog" class="nav-link"><span class="nav-icon" aria-hidden="true">&#128176;</span><span>Price Catalog</span></a></li>
+      <li><a href="#/cost-categories" data-route="cost-categories" class="nav-link"><span class="nav-icon" aria-hidden="true">&#128194;</span><span>Cost Categories</span></a></li>
+      <li><a href="#/profit-goals" data-route="profit-goals" class="nav-link"><span class="nav-icon" aria-hidden="true">&#127919;</span><span>Profit Goals</span></a></li>
+      <li><a href="#/projects" data-route="projects" class="nav-link"><span class="nav-icon" aria-hidden="true">&#127959;</span><span>Projects</span></a></li>
+      <li><a href="#/reports" data-route="reports" class="nav-link"><span class="nav-icon" aria-hidden="true">&#128202;</span><span>Reports &amp; History</span></a></li>
+      <li><a href="#/integration" data-route="integration" class="nav-link"><span class="nav-icon" aria-hidden="true">&#128279;</span><span>Integration Readiness</span></a></li>
+      <li><a href="#/open-decisions" data-route="open-decisions" class="nav-link"><span class="nav-icon" aria-hidden="true">&#10067;</span><span>Open Decisions</span></a></li>
+      <li><a href="#/settings" data-route="settings" class="nav-link"><span class="nav-icon" aria-hidden="true">&#9881;</span><span>Settings</span></a></li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <span class="user-avatar" id="sidebar-user-avatar" aria-hidden="true">TM</span>
+        <div class="user-chip-text">
+          <span id="sidebar-user-name">Demo User</span>
+          <span id="sidebar-user-role" class="muted-text">Estimator</span>
+        </div>
+      </div>
+      <p class="prototype-flag">Static prototype &middot; localStorage data</p>
+    </div>
+  </nav>
+
+  <!-- ===================== SIDEBAR BACKDROP (MOBILE) ===================== -->
+  <div class="sidebar-backdrop" id="sidebar-backdrop" hidden></div>
+
+  <!-- ===================== MAIN CONTENT ===================== -->
+  <div class="main-column">
+
+    <!-- Desktop top bar -->
+    <header class="desktop-topbar" id="desktop-topbar">
+      <div class="topbar-left">
+        <h1 id="page-title">Home Dashboard</h1>
+        <p id="page-subtitle" class="muted-text">Welcome back. Here is what needs attention today.</p>
+      </div>
+      <div class="topbar-right">
+        <label for="active-user-select" class="sr-only">Active demo user</label>
+        <select id="active-user-select" class="select-control" aria-label="Switch active demo user"></select>
+        <div class="appearance-toggle" role="group" aria-label="Appearance mode">
+          <button type="button" class="appearance-btn" data-mode="light" aria-pressed="false" title="Light mode">&#9728;</button>
+          <button type="button" class="appearance-btn" data-mode="dark" aria-pressed="false" title="Dark mode">&#127769;</button>
+          <button type="button" class="appearance-btn" data-mode="device" aria-pressed="false" title="Match device">&#128421;</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Demo data banner -->
+    <div class="demo-banner" id="demo-banner" role="status">
+      <span>&#9432; This workspace contains labeled <strong>demo data</strong> for prototype testing.</span>
+      <button type="button" class="link-btn" id="demo-banner-reset">Reset Demo Data</button>
+      <button type="button" class="icon-btn demo-banner-dismiss" id="demo-banner-dismiss" aria-label="Dismiss banner">&times;</button>
+    </div>
+
+    <!-- Toast / status region -->
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Main routed content -->
+    <main id="main-content" class="main-content" tabindex="-1">
+      <!-- Views are rendered here by ui.js / app.js router -->
+      <div id="view-root"></div>
+    </main>
+
+    <footer class="app-footer">
+      <span>Austin Block Company Internal Operations App &mdash; Version 1 Prototype</span>
+      <span class="muted-text">Built with HTML, CSS, and vanilla JavaScript. No frameworks. No external services.</span>
+    </footer>
+  </div>
+</div>
+
+<!-- ===================== MODAL ROOT ===================== -->
+<div id="modal-root" class="modal-root" aria-hidden="true"></div>
+
+<!-- ===================== CONFIRM DIALOG ROOT ===================== -->
+<div id="confirm-root" class="modal-root" aria-hidden="true"></div>
+
+<!-- ===================== PRINT-ONLY PROPOSAL ROOT ===================== -->
+<div id="print-root" class="print-root" aria-hidden="true"></div>
+
+<!-- ===================== SCRIPTS (load order matters: no bundler) ===================== -->
+<script src="storage.js"></script>
+<script src="data.js"></script>
+<script src="calculations.js"></script>
+<script src="ui.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
