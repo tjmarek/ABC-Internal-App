@@ -1509,7 +1509,7 @@
     '');
   }
 
-  function renderExpenseRowActions(e) {
+   function renderExpenseRowActions(e) {
     var actions = [];
     if (e.approvalStatus === "Draft") actions.push('<button type="button" class="link-btn" data-submit-expense="' + e.id + '">Submit</button>');
     if (e.approvalStatus === "Submitted") {
@@ -1519,4 +1519,554 @@
     if (e.approvalStatus === "Approved" && e.paymentStatus !== "Paid") {
       actions.push('<button type="button" class="link-btn" data-pay-expense="' + e.id + '">Mark Paid</button>');
     }
-    return actions.join
+    return actions.join(' &middot; ') || '&mdash;';
+  }
+
+  function renderExpenseForm(project, expense) {
+    var e = expense || { id: null, expenseDate: new Date().toISOString().substring(0, 10), costCategoryId: "CAT-001", vendor: "", description: "", amountBeforeTax: 0, tax: 0 };
+    return '' +
+      '<div class="modal-header"><h2>' + (expense ? "Edit" : "Add") + ' Expense</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="expense-form" data-proj-id="' + project.id + '" data-expense-id="' + (e.id || '') + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldText("expenseDate", "Expense Date", e.expenseDate ? e.expenseDate.substring(0, 10) : "", { type: "date", required: true }) +
+            fieldSelect("costCategoryId", "Cost Category", e.costCategoryId, D.getCostCategories().map(function (c) { return { value: c.id, label: c.name }; }), { required: true }) +
+            fieldText("vendor", "Vendor", e.vendor, { required: true }) +
+            fieldText("description", "Description", e.description, { required: true, fullWidth: true }) +
+            fieldText("amountBeforeTax", "Amount Before Tax", e.amountBeforeTax, { type: "number", step: "0.01", required: true }) +
+            fieldText("tax", "Tax", e.tax, { type: "number", step: "0.01" }) +
+          '</div>' +
+          '<div class="callout callout-info mt-2">New expenses start as Draft. Submit for review, then an authorized approver marks them Approved or Rejected. Only Approved expenses count toward Actual Project Cost. Paid status is tracked separately from approval status.</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save Expense</button></div>' +
+      '</form>';
+  }
+
+  function renderRejectExpenseForm(expenseId) {
+    return '' +
+      '<div class="modal-header"><h2>Reject Expense</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="reject-expense-form" data-expense-id="' + expenseId + '">' +
+        '<div class="modal-body">' +
+          fieldTextarea("rejectionNote", "Rejection Reason", "", { required: true }) +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-danger">Reject Expense</button></div>' +
+      '</form>';
+  }
+
+  function renderMarkExpensePaidForm(expenseId) {
+    return '' +
+      '<div class="modal-header"><h2>Mark Expense Paid</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="mark-expense-paid-form" data-expense-id="' + expenseId + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldText("paidDate", "Paid Date", new Date().toISOString().substring(0, 10), { type: "date", required: true }) +
+            fieldSelect("paymentMethod", "Payment Method", "Company Card", ["Company Card", "Check", "ACH", "Cash", "Other"], { required: true }) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Mark Paid</button></div>' +
+      '</form>';
+  }
+
+  // ---------- Subcontractors tab ----------
+
+  function renderSubcontractorsTab(project, subs) {
+    var rows = subs.map(function (s) {
+      return '<tr><td>' + esc(s.subcontractorName) + '</td><td>' + esc(s.scopeDescription) + '</td><td>' + fmtMoney(s.commitmentAmount) + '</td>' +
+        '<td>' + fmtMoney(s.invoiceAmount) + '</td><td>' + badge(s.approvalStatus) + '</td>' +
+        '<td>' + (s.paid ? '<span class="badge badge-green">Paid</span>' : '<span class="badge badge-gray">Unpaid</span>') + '</td>' +
+        '<td>' + renderSubActions(s) + '</td></tr>';
+    }).join('');
+    return card('' +
+      '<div class="card-header"><h3>Subcontractor Costs</h3><button type="button" class="btn btn-secondary btn-sm" id="add-sub-btn" data-proj-id="' + project.id + '">+ Add Subcontractor Cost</button></div>' +
+      '<p class="muted-text">Subcontractor commitments and actual invoiced costs are tracked separately from ordinary project expenses.</p>' +
+      (subs.length ? tableWrap('<thead><tr><th>Subcontractor</th><th>Scope</th><th>Commitment</th><th>Invoiced</th><th>Approval</th><th>Paid</th><th></th></tr></thead><tbody>' + rows + '</tbody>')
+        : emptyState("&#128119;", "No subcontractor costs recorded", "Add a subcontractor commitment and invoice.")),
+    '');
+  }
+
+  function renderSubActions(s) {
+    var actions = [];
+    if (s.approvalStatus === "Draft" || s.approvalStatus === "Submitted") actions.push('<button type="button" class="link-btn" data-approve-sub="' + s.id + '">Approve</button>');
+    if (s.approvalStatus === "Submitted" || s.approvalStatus === "Draft") actions.push('<button type="button" class="link-btn" data-reject-sub="' + s.id + '">Reject</button>');
+    if (s.approvalStatus === "Approved" && !s.paid) actions.push('<button type="button" class="link-btn" data-pay-sub="' + s.id + '">Mark Paid</button>');
+    return actions.join(' &middot; ') || '&mdash;';
+  }
+
+  function renderSubForm(project, sub) {
+    var s = sub || { id: null, subcontractorName: "", scopeDescription: "", costCategoryId: "CAT-003", commitmentAmount: 0, invoiceNumber: "", invoiceAmount: 0, invoiceDate: new Date().toISOString().substring(0, 10) };
+    return '' +
+      '<div class="modal-header"><h2>Add Subcontractor Cost</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="sub-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldText("subcontractorName", "Subcontractor Name", s.subcontractorName, { required: true, fullWidth: true }) +
+            fieldText("scopeDescription", "Scope Description", s.scopeDescription, { fullWidth: true }) +
+            fieldSelect("costCategoryId", "Cost Category", s.costCategoryId, D.getCostCategories().map(function (c) { return { value: c.id, label: c.name }; }), { required: true }) +
+            fieldText("commitmentAmount", "Commitment Amount", s.commitmentAmount, { type: "number", step: "0.01" }) +
+            fieldText("invoiceDate", "Invoice Date", s.invoiceDate, { type: "date" }) +
+            fieldText("invoiceNumber", "Invoice Number", s.invoiceNumber) +
+            fieldText("invoiceAmount", "Invoice Amount", s.invoiceAmount, { type: "number", step: "0.01", required: true }) +
+            fieldText("retainage", "Retainage (Optional)", s.retainage || 0, { type: "number", step: "0.01" }) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>' +
+      '</form>';
+  }
+
+  function renderRejectSubForm(subId) {
+    return '' +
+      '<div class="modal-header"><h2>Reject Subcontractor Cost</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="reject-sub-form" data-sub-id="' + subId + '">' +
+        '<div class="modal-body">' + fieldTextarea("rejectionNote", "Rejection Reason", "", { required: true }) + '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-danger">Reject</button></div>' +
+      '</form>';
+  }
+
+  // ---------- ABC Construction Labor tab ----------
+
+  function renderLaborTab(project, labor) {
+    var rows = labor.map(function (l) {
+      return '<tr><td>' + fmtDate(l.workDate) + '</td><td>' + esc(l.employeeName) + '</td><td>' + esc(l.role) + '</td>' +
+        '<td>' + esc(l.laborType) + '</td><td>' + l.hours + '</td><td>' + fmtMoney(l.hourlyInternalRate) + '</td>' +
+        '<td>' + fmtMoney(l.totalLaborCost) + '</td><td>' + badge(l.approvalStatus) + '</td>' +
+        '<td>' + (l.payrollProcessed ? '<span class="badge badge-green">Processed</span>' : '<span class="badge badge-gray">Pending</span>') + '</td>' +
+        '<td>' + renderLaborActions(l) + '</td></tr>';
+    }).join('');
+    return card('' +
+      '<div class="card-header"><h3>ABC Construction Internal Labor</h3><button type="button" class="btn btn-secondary btn-sm" id="add-labor-btn" data-proj-id="' + project.id + '">+ Add Labor Entry</button></div>' +
+      '<p class="muted-text">Internal labor-cost rates are used here, not employee take-home pay. Approved entries roll into Actual Project Cost under the Labor category.</p>' +
+      (labor.length ? tableWrap('<thead><tr><th>Date</th><th>Employee</th><th>Role</th><th>Type</th><th>Hours</th><th>Rate</th><th>Total</th><th>Approval</th><th>Payroll</th><th></th></tr></thead><tbody>' + rows + '</tbody>')
+        : emptyState("&#128119;", "No labor entries recorded", "Add the first ABC Construction labor entry for this project.")),
+    '');
+  }
+
+  function renderLaborActions(l) {
+    var actions = [];
+    if (l.approvalStatus === "Draft" || l.approvalStatus === "Submitted") {
+      actions.push('<button type="button" class="link-btn" data-approve-labor="' + l.id + '">Approve</button>');
+      actions.push('<button type="button" class="link-btn" data-reject-labor="' + l.id + '">Reject</button>');
+    }
+    if (l.approvalStatus === "Approved" && !l.payrollProcessed) {
+      actions.push('<button type="button" class="link-btn" data-process-payroll="' + l.id + '">Mark Payroll Processed</button>');
+    }
+    return actions.join(' &middot; ') || '&mdash;';
+  }
+
+  function renderLaborForm(project, labor) {
+    var l = labor || { id: null, workDate: new Date().toISOString().substring(0, 10), employeeName: "", role: "", laborType: "Crew Hours", hours: 0, hourlyInternalRate: 0, manualAmountOverride: null, manualAmountOverrideReason: "" };
+    return '' +
+      '<div class="modal-header"><h2>Add ABC Construction Labor Entry</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="labor-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldText("workDate", "Work Date", l.workDate, { type: "date", required: true }) +
+            fieldText("employeeName", "Employee / Driver Name", l.employeeName, { required: true }) +
+            fieldText("role", "Role", l.role) +
+            fieldSelect("laborType", "Labor Type", l.laborType, ["Crew Hours", "Excavation", "Base Prep", "Wall Installation", "Cleanup", "Driving / Delivery", "Other"], { required: true }) +
+            fieldText("hours", "Hours", l.hours, { type: "number", step: "0.25", required: true }) +
+            fieldText("hourlyInternalRate", "Hourly Internal Cost Rate", l.hourlyInternalRate, { type: "number", step: "0.01", required: true }) +
+            fieldText("manualAmountOverride", "Manual Amount Override (Optional)", l.manualAmountOverride, { type: "number", step: "0.01" }) +
+            fieldTextarea("manualAmountOverrideReason", "Override Reason (Required If Override Used)", l.manualAmountOverrideReason) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save Entry</button></div>' +
+      '</form>';
+  }
+
+  function renderRejectLaborForm(laborId) {
+    return '' +
+      '<div class="modal-header"><h2>Reject Labor Entry</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="reject-labor-form" data-labor-id="' + laborId + '">' +
+        '<div class="modal-body">' + fieldTextarea("rejectionNote", "Rejection Reason", "", { required: true }) + '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-danger">Reject</button></div>' +
+      '</form>';
+  }
+
+  // ---------- Change Orders tab ----------
+
+  function renderChangeOrdersTab(project, cos) {
+    var rows = cos.map(function (c) {
+      return '<tr><td>' + esc(c.changeOrderNumber) + '</td><td>' + esc(c.description) + '</td><td>' + fmtMoney(c.amount) + '</td>' +
+        '<td>' + badge(c.status) + '</td><td>' + fmtDate(c.approvedDate) + '</td>' +
+        '<td>' + renderChangeOrderActions(c) + '</td></tr>';
+    }).join('');
+    return card('' +
+      '<div class="card-header"><h3>Change Orders</h3><button type="button" class="btn btn-secondary btn-sm" id="add-co-btn" data-proj-id="' + project.id + '">+ Add Change Order</button></div>' +
+      '<p class="muted-text">Approved change orders are stored separately and added to Total Project Value. They never alter the Original Project Budget.</p>' +
+      (cos.length ? tableWrap('<thead><tr><th>#</th><th>Description</th><th>Amount</th><th>Status</th><th>Approved</th><th></th></tr></thead><tbody>' + rows + '</tbody>')
+        : emptyState("&#128196;", "No change orders yet", "Add a change order to adjust the contract value.")),
+    '');
+  }
+
+  function renderChangeOrderActions(c) {
+    var actions = [];
+    if (c.status === "Draft") actions.push('<button type="button" class="link-btn" data-submit-co="' + c.id + '">Submit</button>');
+    if (c.status === "Submitted") {
+      actions.push('<button type="button" class="link-btn" data-approve-co="' + c.id + '">Approve</button>');
+      actions.push('<button type="button" class="link-btn" data-reject-co="' + c.id + '">Reject</button>');
+    }
+    return actions.join(' &middot; ') || '&mdash;';
+  }
+
+  function renderChangeOrderForm(project) {
+    return '' +
+      '<div class="modal-header"><h2>Add Change Order</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="co-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          fieldText("description", "Description", "", { required: true, fullWidth: true }) +
+          fieldText("amount", "Amount", 0, { type: "number", step: "0.01", required: true }) +
+          fieldTextarea("notes", "Notes (Optional)", "") +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save Change Order</button></div>' +
+      '</form>';
+  }
+
+  function renderRejectCoForm(coId) {
+    return '' +
+      '<div class="modal-header"><h2>Reject Change Order</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="reject-co-form" data-co-id="' + coId + '">' +
+        '<div class="modal-body">' + fieldTextarea("rejectionNote", "Rejection Reason", "", { required: true }) + '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-danger">Reject</button></div>' +
+      '</form>';
+  }
+
+  // ---------- Invoices tab ----------
+
+  function renderInvoicesTab(project, invoices) {
+    var rows = invoices.map(function (i) {
+      return '<tr><td>' + esc(i.invoiceNumber) + '</td><td>' + fmtDate(i.invoiceDate) + '</td><td>' + fmtDate(i.dueDate) + '</td>' +
+        '<td>' + fmtMoney(i.invoiceAmount) + '</td><td>' + badge(i.status) + '</td>' +
+        '<td>' + renderInvoiceActions(i) + '</td></tr>';
+    }).join('');
+    return card('' +
+      '<div class="card-header"><h3>Invoices</h3><button type="button" class="btn btn-secondary btn-sm" id="add-invoice-btn" data-proj-id="' + project.id + '">+ Create Invoice</button></div>' +
+      '<div class="callout callout-info mb-3">An invoice is a request for money. It is not the same as a payment. Recording an invoice does not affect Amount Paid.</div>' +
+      (invoices.length ? tableWrap('<thead><tr><th>Invoice #</th><th>Date</th><th>Due</th><th>Amount</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody>')
+        : emptyState("&#128179;", "No invoices yet", "Create an invoice to request payment from the customer.")),
+    '');
+  }
+
+  function renderInvoiceActions(i) {
+    var actions = [];
+    if (i.status === "Draft") actions.push('<button type="button" class="link-btn" data-send-invoice="' + i.id + '">Mark Sent</button>');
+    if (i.status === "Sent" || i.status === "Overdue" || i.status === "Partially Paid") actions.push('<button type="button" class="link-btn" data-void-invoice="' + i.id + '">Void</button>');
+    return actions.join(' &middot; ') || '&mdash;';
+  }
+
+  function renderInvoiceForm(project) {
+    return '' +
+      '<div class="modal-header"><h2>Create Invoice</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="invoice-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldText("invoiceDate", "Invoice Date", new Date().toISOString().substring(0, 10), { type: "date", required: true }) +
+            fieldText("dueDate", "Due Date", "", { type: "date" }) +
+            fieldText("invoiceAmount", "Invoice Amount", 0, { type: "number", step: "0.01", required: true }) +
+            fieldTextarea("notes", "Notes (Optional)", "", { fullWidth: true }) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Create Invoice</button></div>' +
+      '</form>';
+  }
+
+  // ---------- Payments tab ----------
+
+  function renderPaymentsTab(project, payments, fin) {
+    var rows = payments.map(function (p) {
+      return '<tr><td>' + fmtDate(p.paymentDate) + '</td><td>' + fmtMoney(p.amount) + '</td><td>' + esc(p.paymentMethod) + '</td>' +
+        '<td>' + esc(p.paymentReference || "&mdash;") + '</td><td>' + esc(p.notes || "") + '</td></tr>';
+    }).join('');
+    return '' +
+      card('<h3>Payments Summary</h3><div class="financial-summary-grid">' +
+        '<div><span class="field-label">Total Project Value</span><p>' + fmtMoney(fin.totalProjectValue) + '</p></div>' +
+        '<div><span class="field-label">Total Invoiced</span><p>' + fmtMoney(fin.totalInvoiced) + '</p></div>' +
+        '<div><span class="field-label">Total Paid</span><p>' + fmtMoney(fin.amountPaid) + '</p></div>' +
+        '<div><span class="field-label">Remaining Balance</span><p>' + fmtMoney(fin.amountOwed) + '</p></div>' +
+      '</div>', '') +
+      card('' +
+        '<div class="card-header"><h3>Customer Payments Received</h3><button type="button" class="btn btn-secondary btn-sm" id="add-payment-btn" data-proj-id="' + project.id + '">+ Record Payment</button></div>' +
+        '<div class="callout callout-info mb-3">A payment is money actually received. It is recorded separately from invoices.</div>' +
+        (payments.length ? tableWrap('<thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Reference</th><th>Notes</th></tr></thead><tbody>' + rows + '</tbody>')
+          : emptyState("&#128176;", "No payments recorded", "Record the first customer payment received for this project.")),
+      'mt-4');
+  }
+
+  function renderPaymentForm(project) {
+    return '' +
+      '<div class="modal-header"><h2>Record Customer Payment</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="payment-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldText("paymentDate", "Payment Date", new Date().toISOString().substring(0, 10), { type: "date", required: true }) +
+            fieldText("amount", "Amount", 0, { type: "number", step: "0.01", required: true }) +
+            fieldSelect("paymentMethod", "Payment Method", "Check", ["Check", "ACH", "Credit Card", "Cash", "Wire", "Other"], { required: true }) +
+            fieldText("paymentReference", "Payment Reference (Optional)", "") +
+            fieldTextarea("notes", "Notes (Optional)", "", { fullWidth: true }) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Record Payment</button></div>' +
+      '</form>';
+  }
+
+  // ---------- Edit Project / Close Project forms ----------
+
+  function renderEditProjectForm(project) {
+    return '' +
+      '<div class="modal-header"><h2>Edit Project</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="edit-project-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          '<div class="form-grid">' +
+            fieldSelect("status", "Project Status", project.status, D.PROJECT_STATUSES, { required: true }) +
+            fieldSelect("projectManagerUserId", "Project Manager", project.projectManagerUserId, D.getUsers().map(function (u) { return { value: u.id, label: u.name }; }), { includeBlank: true }) +
+            fieldText("startDate", "Start Date", project.startDate ? project.startDate.substring(0, 10) : "", { type: "date" }) +
+          '</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>' +
+      '</form>';
+  }
+
+  function renderCloseProjectForm(project) {
+    return '' +
+      '<div class="modal-header"><h2>Close Project</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="close-project-form" data-proj-id="' + project.id + '">' +
+        '<div class="modal-body">' +
+          fieldText("completionDate", "Completion Date", new Date().toISOString().substring(0, 10), { type: "date", required: true }) +
+          fieldSelect("closeoutReason", "Closeout Reason", "", D.getControlledLists().closeoutReasons, { required: true }) +
+          fieldTextarea("closeoutNotes", "Closeout Notes", "", { required: true }) +
+          '<div class="callout callout-warning">Closed project records become read-only except for authorized correction/reopen actions with an audit reason.</div>' +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Close Project</button></div>' +
+      '</form>';
+  }
+
+  // =========================================================================
+  // VIEW: HISTORICAL SEARCH & FILTERS (module 28)
+  // =========================================================================
+
+  function renderReports(filterState) {
+    setPageHeader("Historical Search & Reports", "Search across every opportunity, estimate, project, and financial record.");
+    var f = filterState || {};
+    var q = (f.search || "").toLowerCase();
+
+    var oppMatches = D.getOpportunities().filter(function (o) { return !q || (o.customerName + " " + o.projectAddress + " " + o.id).toLowerCase().indexOf(q) !== -1; });
+    var estMatches = D.getEstimates().filter(function (e) { return !q || (e.id + " " + e.jobAddress).toLowerCase().indexOf(q) !== -1; });
+    var projMatches = D.getProjects().filter(function (p) { return !q || (p.customerName + " " + p.jobAddress + " " + p.id).toLowerCase().indexOf(q) !== -1; });
+
+    var searchBar = '<div class="mb-4"><input class="input-control" id="reports-search" placeholder="Search everything..." value="' + esc(f.search || '') + '" style="max-width:420px" /></div>';
+
+    var oppSection = card('<h3>Opportunities (' + oppMatches.length + ')</h3>' + (oppMatches.length ? tableWrap(
+      '<thead><tr><th>ID</th><th>Customer</th><th>Status</th><th></th></tr></thead><tbody>' +
+      oppMatches.slice(0, 20).map(function (o) { return '<tr><td>' + esc(o.id) + '</td><td>' + esc(o.customerName) + '</td><td>' + badge(o.status) + '</td><td><a href="#/opportunities/' + o.id + '" class="link-btn">Open</a></td></tr>'; }).join('') +
+      '</tbody>') : '<p class="muted-text">No matches.</p>'), '');
+
+    var estSection = card('<h3>Estimates (' + estMatches.length + ')</h3>' + (estMatches.length ? tableWrap(
+      '<thead><tr><th>ID</th><th>Status</th><th>Selling Price</th><th></th></tr></thead><tbody>' +
+      estMatches.slice(0, 20).map(function (e) { return '<tr><td>' + esc(e.id) + '</td><td>' + badge(e.status) + '</td><td>' + fmtMoney(e.sellingPrice) + '</td><td><a href="#/estimates/' + e.id + '" class="link-btn">Open</a></td></tr>'; }).join('') +
+      '</tbody>') : '<p class="muted-text">No matches.</p>'), 'mt-4');
+
+    var projSection = card('<h3>Projects (' + projMatches.length + ')</h3>' + (projMatches.length ? tableWrap(
+      '<thead><tr><th>ID</th><th>Customer</th><th>Status</th><th></th></tr></thead><tbody>' +
+      projMatches.slice(0, 20).map(function (p) { return '<tr><td>' + esc(p.id) + '</td><td>' + esc(p.customerName) + '</td><td>' + badge(p.status) + '</td><td><a href="#/projects/' + p.id + '" class="link-btn">Open</a></td></tr>'; }).join('') +
+      '</tbody>') : '<p class="muted-text">No matches.</p>'), 'mt-4');
+
+    return searchBar + oppSection + estSection + projSection;
+  }
+
+  // =========================================================================
+  // VIEW: INTEGRATION READINESS (module: M365/SharePoint mapping)
+  // =========================================================================
+
+  function renderIntegrationReadiness() {
+    setPageHeader("Integration Readiness", "Intended Microsoft 365 / SharePoint mappings for a future connected build.");
+
+    var mappings = [
+      { area: "Employee Sign-In", tool: "Microsoft Entra ID", status: "Not connected in this static prototype", note: "Prototype uses a selectable demo-user list instead of real authentication." },
+      { area: "Opportunities, Estimates, Takeoffs, Projects, Costs, Expenses, Payments, Labor, Subcontractors, Price Catalog", tool: "SharePoint Lists (Austin Block Operations site)", status: "Not connected in this static prototype", note: "All of this data currently lives in browser localStorage." },
+      { area: "Plans, Photos, Receipts, Invoices, Proposal PDFs, Contracts, Signed Change Orders", tool: "SharePoint Document Libraries", status: "Not connected in this static prototype", note: "File records in this prototype are placeholders only; no real files are stored or uploaded." },
+      { area: "Reminders & Notifications", tool: "Microsoft To Do / Outlook", status: "Not connected in this static prototype", note: "Follow-up due dates are tracked inside the app instead." },
+      { area: "Email & Calendar", tool: "Outlook / Calendly", status: "Not connected in this static prototype", note: "No email is sent from this prototype." },
+      { area: "Formal Accounting", tool: "QuickBooks", status: "Not connected in this static prototype", note: "JSON/CSV export is available from Settings for manual use." },
+      { area: "Code & Deployment", tool: "GitHub + Netlify", status: "Not connected in this static prototype", note: "This prototype is a static site with no build step, deployable to Netlify directly." }
+    ];
+
+    var rows = mappings.map(function (m) {
+      return '<tr><td>' + esc(m.area) + '</td><td>' + esc(m.tool) + '</td><td><span class="badge badge-gray">' + esc(m.status) + '</span></td><td class="muted-text">' + esc(m.note) + '</td></tr>';
+    }).join('');
+
+    return card('' +
+      '<p>This screen documents the intended integration architecture per the workbook\'s System Architecture &amp; M365 Integration tab. No live Entra ID, SharePoint, Outlook, Microsoft To Do, QuickBooks, or Calendly connectivity exists in this prototype. All data lives in this browser\'s localStorage.</p>' +
+      tableWrap('<thead><tr><th>Operational Area</th><th>Intended Microsoft 365 / SharePoint Tool</th><th>Status</th><th>Note</th></tr></thead><tbody>' + rows + '</tbody>'),
+    '') +
+    openDecisionCallout("OD-009", "Final SharePoint site name, List names, library names, folder convention, retention, and access groups are not yet decided.");
+  }
+
+  // =========================================================================
+  // VIEW: OPEN DECISIONS REGISTER
+  // =========================================================================
+
+  function renderOpenDecisions() {
+    setPageHeader("Open Decisions", "Unresolved workbook items flagged instead of guessed, pending an Austin Block Company decision.");
+    var decisions = D.getOpenDecisions();
+
+    var cards = decisions.map(function (d) {
+      return card('' +
+        '<div class="flex-between"><h3>' + esc(d.code) + ': ' + esc(d.title) + '</h3>' + (d.custom ? '<span class="badge badge-blue">Custom</span>' : '') + '</div>' +
+        '<p><strong>Related Workbook Tab / Requirement:</strong> ' + esc(d.relatedTab) + (d.relatedRequirement ? " &mdash; " + esc(d.relatedRequirement) : "") + '</p>' +
+        '<p><strong>Why It Is Unresolved:</strong> ' + esc(d.whyUnresolved) + '</p>' +
+        '<p><strong>Decision Austin Block Company Needs to Make:</strong> ' + esc(d.decisionNeeded) + '</p>' +
+        '<p><strong>Feature Behavior While Unresolved:</strong> ' + esc(d.behaviorWhileUnresolved) + '</p>',
+      'mt-4');
+    }).join('');
+
+    return '' +
+      '<div class="flex-between mb-4"><p class="muted-text">' + decisions.length + ' open decisions on record.</p><button type="button" class="btn btn-secondary" id="add-open-decision-btn">+ Add Company-Specific Decision</button></div>' +
+      cards;
+  }
+
+  function renderAddOpenDecisionForm() {
+    return '' +
+      '<div class="modal-header"><h2>Add Open Decision</h2><button type="button" class="icon-btn" data-close-modal aria-label="Close">&times;</button></div>' +
+      '<form id="add-open-decision-form">' +
+        '<div class="modal-body">' +
+          fieldText("title", "Decision Title", "", { required: true, fullWidth: true }) +
+          fieldText("relatedTab", "Related Workbook Tab", "", { required: true }) +
+          fieldText("relatedRequirement", "Related Requirement", "") +
+          fieldTextarea("whyUnresolved", "Why It Is Unresolved", "", { required: true, fullWidth: true }) +
+          fieldTextarea("decisionNeeded", "What Decision Is Needed", "", { required: true, fullWidth: true }) +
+          fieldTextarea("behaviorWhileUnresolved", "Feature Behavior While Unresolved", "", { required: true, fullWidth: true }) +
+        '</div>' +
+        '<div class="form-actions"><button type="button" class="btn btn-secondary" data-close-modal>Cancel</button><button type="submit" class="btn btn-primary">Add Decision</button></div>' +
+      '</form>';
+  }
+
+  // =========================================================================
+  // VIEW: SETTINGS
+  // =========================================================================
+
+  function renderSettings() {
+    setPageHeader("Settings", "Appearance preferences, demo data controls, and prototype data management.");
+    var userId = D.getActiveUserId();
+    var prefs = D.getPreferences(userId);
+    var users = D.getUsers();
+
+    var appearanceCard = card('' +
+      '<h3>Appearance</h3>' +
+      '<p class="muted-text">Saved to your individual browser profile only. It does not affect any other user.</p>' +
+      '<div class="appearance-toggle" role="group" aria-label="Appearance mode" id="settings-appearance-toggle">' +
+        '<button type="button" class="appearance-btn" data-mode="light" aria-pressed="' + (prefs.appearanceMode === "light") + '">Light</button>' +
+        '<button type="button" class="appearance-btn" data-mode="dark" aria-pressed="' + (prefs.appearanceMode === "dark") + '">Dark</button>' +
+        '<button type="button" class="appearance-btn" data-mode="device" aria-pressed="' + (prefs.appearanceMode === "device" || !prefs.appearanceMode) + '">Match Device</button>' +
+      '</div>',
+    '');
+
+    var userCard = card('' +
+      '<h3>Active Demo User</h3>' +
+      '<p class="muted-text">Switch which demo employee you are acting as. This affects who is recorded as performing each action.</p>' +
+      '<select class="select-control" id="settings-user-select" style="max-width:320px">' +
+        users.map(function (u) { return '<option value="' + u.id + '" ' + (u.id === userId ? 'selected' : '') + '>' + esc(u.name) + ' (' + esc(u.role) + ')</option>'; }).join('') +
+      '</select>',
+    'mt-4');
+
+    var listsCard = card('' +
+      '<h3>Controlled Lists (Demo Starter Values)</h3>' +
+      '<div class="callout callout-open-decision mb-3">These are demo starter lists, not final Austin Block Company policy (Open Decision OD-013). Edit and save below.</div>' +
+      '<form id="controlled-lists-form">' +
+        fieldTextarea("leadSources", "Lead Sources (one per line)", D.getControlledLists().leadSources.join("\n"), { fullWidth: true }) +
+        fieldTextarea("projectTypes", "Project Types (one per line)", D.getControlledLists().projectTypes.join("\n"), { fullWidth: true }) +
+        fieldTextarea("lossReasons", "Loss Reasons (one per line)", D.getControlledLists().lossReasons.join("\n"), { fullWidth: true }) +
+        fieldTextarea("closeoutReasons", "Project Closeout Reasons (one per line)", D.getControlledLists().closeoutReasons.join("\n"), { fullWidth: true }) +
+        '<div class="form-actions"><button type="submit" class="btn btn-primary">Save Lists</button></div>' +
+      '</form>',
+    'mt-4');
+
+    var dataCard = card('' +
+      '<h3>Prototype Data Management</h3>' +
+      '<div class="flex-row">' +
+        '<button type="button" class="btn btn-secondary" id="export-data-btn">Export Data (JSON)</button>' +
+        '<label class="btn btn-secondary" for="import-data-input" style="cursor:pointer">Import Data (JSON)</label>' +
+        '<input type="file" id="import-data-input" accept="application/json" style="display:none" />' +
+        '<button type="button" class="btn btn-danger" id="reset-demo-data-btn">Reset Demo Data</button>' +
+      '</div>' +
+      '<p class="field-hint mt-2">Reset Demo Data permanently erases all current data in this browser and rebuilds the labeled demo workflow.</p>',
+    'mt-4');
+
+    return appearanceCard + userCard + listsCard + dataCard;
+  }
+
+  // =========================================================================
+  // PUBLIC API
+  // =========================================================================
+
+  global.AbcUI = {
+    // formatting
+    fmtMoney: fmtMoney, fmtPct: fmtPct, fmtDate: fmtDate, fmtDateTime: fmtDateTime, esc: esc, daysBetween: daysBetween,
+
+    // structural helpers
+    badge: badge, tierBadge: tierBadge, tierVisualColor: tierVisualColor, card: card, tableWrap: tableWrap,
+    emptyState: emptyState, openDecisionCallout: openDecisionCallout,
+
+    // toast / modal / confirm
+    showToast: showToast, openModal: openModal, closeModal: closeModal, openConfirm: openConfirm, closeConfirm: closeConfirm,
+
+    // appearance / nav
+    applyAppearance: applyAppearance, initAppearanceForActiveUser: initAppearanceForActiveUser, setAppearanceForActiveUser: setAppearanceForActiveUser,
+    setActiveNavLink: setActiveNavLink, closeMobileSidebar: closeMobileSidebar, openMobileSidebar: openMobileSidebar, setPageHeader: setPageHeader,
+
+    // form helpers
+    fieldText: fieldText, fieldTextarea: fieldTextarea, fieldSelect: fieldSelect, fieldCheckbox: fieldCheckbox, readForm: readForm,
+
+    // views
+    renderDashboard: renderDashboard,
+    renderOpportunitiesList: renderOpportunitiesList,
+    renderNewOpportunityForm: renderNewOpportunityForm,
+    renderOpportunityEditForm: renderOpportunityEditForm,
+    renderMarkLostForm: renderMarkLostForm,
+    renderMarkHoldForm: renderMarkHoldForm,
+    renderNewEstimateForm: renderNewEstimateForm,
+    renderOpportunityDetail: renderOpportunityDetail,
+    renderFilesSection: renderFilesSection,
+    renderAddFileForm: renderAddFileForm,
+    renderActivityList: renderActivityList,
+    userName: userName,
+
+    renderEstimatesList: renderEstimatesList,
+    renderEstimateWorkspace: renderEstimateWorkspace,
+    renderEditEstimateHeaderForm: renderEditEstimateHeaderForm,
+    renderLineItemForm: renderLineItemForm,
+    renderSegmentForm: renderSegmentForm,
+    renderCostRowForm: renderCostRowForm,
+    renderCompleteFollowUpForm: renderCompleteFollowUpForm,
+    renderRevisionReasonForm: renderRevisionReasonForm,
+    renderDeclineForm: renderDeclineForm,
+    renderMarkWonForm: renderMarkWonForm,
+    buildProposalHtml: buildProposalHtml,
+
+    renderPriceCatalog: renderPriceCatalog,
+    renderCostCategories: renderCostCategories,
+    renderProfitGoals: renderProfitGoals,
+
+    renderProjectsList: renderProjectsList,
+    renderNewProjectForm: renderNewProjectForm,
+    renderProjectDetail: renderProjectDetail,
+    renderExpenseForm: renderExpenseForm,
+    renderRejectExpenseForm: renderRejectExpenseForm,
+    renderMarkExpensePaidForm: renderMarkExpensePaidForm,
+    renderSubForm: renderSubForm,
+    renderRejectSubForm: renderRejectSubForm,
+    renderLaborForm: renderLaborForm,
+    renderRejectLaborForm: renderRejectLaborForm,
+    renderChangeOrderForm: renderChangeOrderForm,
+    renderRejectCoForm: renderRejectCoForm,
+    renderInvoiceForm: renderInvoiceForm,
+    renderPaymentForm: renderPaymentForm,
+    renderEditProjectForm: renderEditProjectForm,
+    renderCloseProjectForm: renderCloseProjectForm,
+
+    renderReports: renderReports,
+    renderIntegrationReadiness: renderIntegrationReadiness,
+    renderOpenDecisions: renderOpenDecisions,
+    renderAddOpenDecisionForm: renderAddOpenDecisionForm,
+    renderSettings: renderSettings
+  };
+
+})(window);
